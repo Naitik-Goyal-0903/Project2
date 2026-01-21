@@ -12,52 +12,68 @@ const io = new Server(server, {
 
 const rooms = {};
 
-const destroyRoom = (roomCode) => {
-  if (rooms[roomCode]) {
-    // Notify all clients in the room before destroying it
-    io.to(roomCode).emit("room-destroyed");
-    delete rooms[roomCode];
-    console.log(`Room '${roomCode}' has been destroyed.`);
+// This function now correctly handles removing a user and destroying the room ONLY if it's empty.
+const handleUserLeave = (socket) => {
+  for (const roomCode in rooms) {
+    const room = rooms[roomCode];
+    const userIndex = room.users.indexOf(socket.id);
+
+    if (userIndex !== -1) {
+      console.log(`User ${socket.id} is leaving room '${roomCode}'`);
+      // Remove the user from the room
+      room.users.splice(userIndex, 1);
+
+      // Notify remaining users that someone left
+      socket.broadcast.to(roomCode).emit("system", "A user has left the chat.");
+
+      // THE FINAL FIX: Only destroy the room if it's now empty.
+      if (room.users.length === 0) {
+        console.log(`Room '${roomCode}' is now empty and is being destroyed.`);
+        delete rooms[roomCode];
+      }
+      break; // Exit loop once user is found and handled
+    }
   }
 };
 
 io.on("connection", (socket) => {
   console.log(`A user connected: ${socket.id}`);
 
-  // CREATE ROOM
   socket.on("create-room", ({ roomCode, maxUsers, duration }) => {
     if (!roomCode) { return; }
     rooms[roomCode] = {
       users: [],
-      maxUsers,
+      // THE FINAL FIX: Ensure maxUsers is always a number.
+      maxUsers: parseInt(maxUsers, 10) || 2,
       endTime: Date.now() + duration,
     };
-    console.log(`Room '${roomCode}' was created.`);
+    console.log(`Room '${roomCode}' was created with a max of ${rooms[roomCode].maxUsers} users.`);
   });
 
-  // JOIN ROOM
   socket.on("join-room", (data) => {
     const roomCode = data.roomCode ? data.roomCode.trim() : '';
     if (!roomCode) { return; }
     const room = rooms[roomCode];
     if (!room) { return socket.emit("error-msg", "Room not found"); }
-    if (room.users.length >= room.maxUsers) { return socket.emit("error-msg", "Room is full"); }
+
+    // THE FINAL FIX: This comparison is now safe because maxUsers is a number.
+    if (room.users.length >= room.maxUsers) {
+      return socket.emit("error-msg", "Room is full");
+    }
     if (Date.now() > room.endTime) { return socket.emit("error-msg", "Room has expired"); }
 
     room.users.push(socket.id);
     socket.join(roomCode);
-    console.log(`Success: User ${socket.id} joined room '${roomCode}'.`);
+    console.log(`Success: User ${socket.id} joined room '${roomCode}'. Current users: ${room.users.length}`);
     socket.emit("joined");
     socket.broadcast.to(roomCode).emit("system", "A user has joined the chat.");
   });
 
-  // LEAVE ROOM - NOW DESTROYS THE ROOM
-  socket.on("leave-room", ({ roomCode }) => {
-    console.log(`User ${socket.id} is leaving and destroying room '${roomCode}'`);
-    destroyRoom(roomCode);
+  // LEAVE ROOM - Now uses the new, safe logic.
+  socket.on("leave-room", () => {
+    handleUserLeave(socket);
   });
 
-  // GET ROOM DETAILS
   socket.on("get-room-details", ({ roomCode }) => {
     const room = rooms[roomCode];
     if (room) {
@@ -66,26 +82,20 @@ io.on("connection", (socket) => {
     }
   });
 
-  // SEND MESSAGE
   socket.on("send-message", ({ roomCode, message }) => {
     socket.broadcast.to(roomCode).emit("new-message", message);
   });
 
-  // DISCONNECT - NOW ALSO DESTROYS THE ROOM
+  // DISCONNECT - Now uses the new, safe logic.
   socket.on("disconnect", () => {
     console.log(`User disconnected: ${socket.id}`);
-    for (const roomCode in rooms) {
-      const room = rooms[roomCode];
-      const userIndex = room.users.indexOf(socket.id);
-      if (userIndex !== -1) {
-        console.log(`Disconnected user was in room '${roomCode}'. Destroying room.`);
-        destroyRoom(roomCode);
-        break;
-      }
-    }
+    handleUserLeave(socket);
   });
 });
 
-server.listen(3000, "0.0.0.0", () => {
-  console.log("ANONX Server is running on port 3000");
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`ANONX Server is running on port ${PORT}`);
 });
+
