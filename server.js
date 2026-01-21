@@ -5,18 +5,19 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 
+// THE FINAL FIX FOR RENDER'S NETWORK
 const io = new Server(server, {
   cors: { origin: "*" },
   maxHttpBufferSize: 1e8, // 100 MB
+  // This forces a more stable connection method compatible with free hosting.
+  transports: ["polling"],
 });
 
 const rooms = {};
 
-// A NEW, SIMPLER, AND SAFER WAY TO HANDLE USERS LEAVING.
 const handleUserLeave = (socket) => {
   const roomCode = socket.roomCode;
   if (!roomCode || !rooms[roomCode]) {
-    // This user wasn't in a room, or the room is already gone.
     return;
   }
 
@@ -27,12 +28,10 @@ const handleUserLeave = (socket) => {
     room.users.splice(userIndex, 1);
     console.log(`User ${socket.id} has left room '${roomCode}'.`);
 
-    // Only destroy the room if it has become empty.
     if (room.users.length === 0) {
       console.log(`Room '${roomCode}' is empty, destroying.`);
       delete rooms[roomCode];
     } else {
-      // Notify the remaining users.
       socket.broadcast.to(roomCode).emit("system", "A user has left the chat.");
     }
   }
@@ -63,7 +62,6 @@ io.on("connection", (socket) => {
     }
     if (Date.now() > room.endTime) { return socket.emit("error-msg", "Room has expired"); }
 
-    // THE NEW, SAFER ARCHITECTURE: Tag the socket with its room.
     socket.roomCode = roomCode;
     room.users.push(socket.id);
     socket.join(roomCode);
@@ -98,6 +96,7 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`ANONX Server is running on port ${PORT}`);
 });
+
 
 
 
