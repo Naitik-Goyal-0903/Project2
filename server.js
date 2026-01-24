@@ -5,15 +5,13 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 
-// THE FINAL, DEFINITIVE FIX FOR MULTI-USER
+// THE FINAL, ONE-GO FIX: Forcing a stable transport method for Render
 const io = new Server(server, {
   cors: { origin: "*" },
-  maxHttpBufferSize: 1e8, // 100 MB
-
-  // This is the magic flag. It enables compatibility mode, telling the new
-  // v4 server how to correctly handle connections from the older v2 Android client.
-  // This solves the 'kicking out' bug at the deepest level.
-  allowEIO3: true,
+  maxHttpBufferSize: 1e8,
+  // This tells the server to prefer the ultra-stable polling method.
+  transports: ["polling", "websocket"],
+  allowEIO3: true, // Keep for maximum compatibility
 });
 
 const rooms = {};
@@ -23,16 +21,11 @@ const handleUserLeave = (socket) => {
   if (!roomCode || !rooms[roomCode]) {
     return;
   }
-
   const room = rooms[roomCode];
   const userIndex = room.users.indexOf(socket.id);
-
   if (userIndex !== -1) {
     room.users.splice(userIndex, 1);
-    console.log(`User ${socket.id} has left room '${roomCode}'.`);
-
     if (room.users.length === 0) {
-      console.log(`Room '${roomCode}' is empty, destroying.`);
       delete rooms[roomCode];
     } else {
       socket.broadcast.to(roomCode).emit("system", "A user has left the chat.");
@@ -41,7 +34,7 @@ const handleUserLeave = (socket) => {
 };
 
 io.on("connection", (socket) => {
-  console.log(`A user connected: ${socket.id}`);
+  console.log(`A user connected: ${socket.id} via ${socket.conn.transport.name}`);
 
   socket.on("create-room", ({ roomCode, maxUsers, duration }) => {
     if (!roomCode) { return; }
@@ -50,16 +43,13 @@ io.on("connection", (socket) => {
       maxUsers: parseInt(maxUsers, 10) || 2,
       endTime: Date.now() + duration,
     };
-    console.log(`Room '${roomCode}' created for ${rooms[roomCode].maxUsers} users.`);
   });
 
   socket.on("join-room", (data) => {
     const roomCode = data.roomCode ? data.roomCode.trim() : '';
     if (!roomCode) { return; }
-
     const room = rooms[roomCode];
     if (!room) { return socket.emit("error-msg", "Room not found"); }
-
     if (room.users.length >= room.maxUsers) {
       return socket.emit("error-msg", "Room is full");
     }
@@ -69,7 +59,6 @@ io.on("connection", (socket) => {
     room.users.push(socket.id);
     socket.join(roomCode);
 
-    console.log(`User ${socket.id} joined room '${roomCode}'. Users in room: ${room.users.length}`);
     socket.emit("joined");
     socket.broadcast.to(roomCode).emit("system", "A user has joined the chat.");
   });
@@ -90,7 +79,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    console.log(`User ${socket.id} disconnected.`);
     handleUserLeave(socket);
   });
 });
@@ -99,6 +87,7 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`ANONX Server is running on port ${PORT}`);
 });
+
 
 
 
