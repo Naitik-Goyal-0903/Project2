@@ -5,94 +5,113 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 
-// THE FINAL, ONE-GO FIX: Forcing ONLY the stable transport method for Render.
 const io = new Server(server, {
-  cors: { origin: "*" },
-  maxHttpBufferSize: 1e8,
-  // This tells the server to ONLY allow the ultra-stable polling method.
-  // This is the definitive fix for Render's network.
-  transports: ["polling"],
-  allowEIO3: true, // Keep for maximum compatibility
+  cors: { origin: "*" }
 });
 
+// rooms = {
+//   ROOM123: {
+//     users: [socketId1, socketId2],
+//     maxUsers: 2,
+//     endTime: timestamp
+//   }
+// }
 const rooms = {};
 
-const handleUserLeave = (socket) => {
-  const roomCode = socket.roomCode;
-  if (!roomCode || !rooms[roomCode]) {
-    return;
-  }
+// 🔥 CLEAN & SAFE LEAVE HANDLER
+function handleUserLeave(socket) {
+  const roomCode = socket.data.roomCode;
+  if (!roomCode || !rooms[roomCode]) return;
+
   const room = rooms[roomCode];
-  const userIndex = room.users.indexOf(socket.id);
-  if (userIndex !== -1) {
-    room.users.splice(userIndex, 1);
-    console.log(`User ${socket.id} has left room '${roomCode}'.`);
-    if (room.users.length === 0) {
-        console.log(`Room '${roomCode}' is empty, destroying.`);
-        delete rooms[roomCode];
-    } else {
-      socket.broadcast.to(roomCode).emit("system", "A user has left the chat.");
-    }
+
+  room.users = room.users.filter(id => id !== socket.id);
+
+  console.log(`User ${socket.id} left room ${roomCode}`);
+
+  socket.broadcast.to(roomCode).emit("system", "A user left the chat");
+
+  // destroy room only if empty
+  if (room.users.length === 0) {
+    console.log(`Room ${roomCode} destroyed (empty)`);
+    delete rooms[roomCode];
   }
-};
+
+  delete socket.data.roomCode;
+}
 
 io.on("connection", (socket) => {
-  console.log(`A user connected: ${socket.id} via ${socket.conn.transport.name}`);
+  console.log("User connected:", socket.id);
 
+  // CREATE ROOM
   socket.on("create-room", ({ roomCode, maxUsers, duration }) => {
-    if (!roomCode) { return; }
+    if (!roomCode) return;
+
     rooms[roomCode] = {
       users: [],
       maxUsers: parseInt(maxUsers, 10) || 2,
-      endTime: Date.now() + duration,
+      endTime: Date.now() + (duration || 5 * 60 * 1000)
     };
-    console.log(`Room '${roomCode}' created for ${rooms[roomCode].maxUsers} users.`);
+
+    console.log(`Room created: ${roomCode}`);
   });
 
-  socket.on("join-room", (data) => {
-    const roomCode = data.roomCode ? data.roomCode.trim() : '';
-    if (!roomCode) { return; }
-    const room = rooms[roomCode];
-    if (!room) { return socket.emit("error-msg", "Room not found"); }
-    if (room.users.length >= room.maxUsers) {
-      return socket.emit("error-msg", "Room is full");
-    }
-    if (Date.now() > room.endTime) { return socket.emit("error-msg", "Room has expired"); }
+  // JOIN ROOM
+  socket.on("join-room", ({ roomCode }) => {
+    if (!roomCode) return;
 
-    socket.roomCode = roomCode;
+    const room = rooms[roomCode];
+    if (!room) {
+      socket.emit("error-msg", "Room not found");
+      return;
+    }
+
+    // prevent duplicate join
+    if (room.users.includes(socket.id)) return;
+
+    if (room.users.length >= room.maxUsers) {
+      socket.emit("error-msg", "Room full");
+      return;
+    }
+
+    if (Date.now() > room.endTime) {
+      socket.emit("error-msg", "Room expired");
+      return;
+    }
+
     room.users.push(socket.id);
     socket.join(roomCode);
+    socket.data.roomCode = roomCode;
 
-    console.log(`User ${socket.id} joined room '${roomCode}'. Users in room: ${room.users.length}`);
+    console.log(`User ${socket.id} joined ${roomCode}`);
+
     socket.emit("joined");
-    socket.broadcast.to(roomCode).emit("system", "A user has joined the chat.");
+    socket.broadcast.to(roomCode).emit("system", "A user joined the chat");
   });
 
+  // SEND MESSAGE (to everyone including sender)
+  socket.on("send-message", ({ roomCode, message }) => {
+    if (!roomCode || !message) return;
+    io.to(roomCode).emit("new-message", message);
+  });
+
+  // MANUAL LEAVE
   socket.on("leave-room", () => {
     handleUserLeave(socket);
   });
 
-  socket.on("get-room-details", ({ roomCode }) => {
-    const room = rooms[roomCode];
-    if (room) {
-      socket.emit("room-details", { remainingTime: Math.max(0, room.endTime - Date.now()) });
-    }
-  });
-
-  socket.on("send-message", ({ roomCode, message }) => {
-    socket.broadcast.to(roomCode).emit("new-message", message);
-  });
-
+  // DISCONNECT
   socket.on("disconnect", () => {
-    console.log(`User ${socket.id} disconnected.`);
+    console.log("User disconnected:", socket.id);
     handleUserLeave(socket);
   });
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`ANONX Server is running on port ${PORT}`);
+  console.log(`ANONX server running on port ${PORT}`);
 });
+
 
 
 
