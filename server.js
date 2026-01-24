@@ -5,12 +5,13 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 
-// THE FINAL, ONE-GO FIX: Forcing a stable transport method for Render
+// THE FINAL, ONE-GO FIX: Forcing ONLY the stable transport method for Render.
 const io = new Server(server, {
   cors: { origin: "*" },
   maxHttpBufferSize: 1e8,
-  // This tells the server to prefer the ultra-stable polling method.
-  transports: ["polling", "websocket"],
+  // This tells the server to ONLY allow the ultra-stable polling method.
+  // This is the definitive fix for Render's network.
+  transports: ["polling"],
   allowEIO3: true, // Keep for maximum compatibility
 });
 
@@ -25,8 +26,10 @@ const handleUserLeave = (socket) => {
   const userIndex = room.users.indexOf(socket.id);
   if (userIndex !== -1) {
     room.users.splice(userIndex, 1);
+    console.log(`User ${socket.id} has left room '${roomCode}'.`);
     if (room.users.length === 0) {
-      delete rooms[roomCode];
+        console.log(`Room '${roomCode}' is empty, destroying.`);
+        delete rooms[roomCode];
     } else {
       socket.broadcast.to(roomCode).emit("system", "A user has left the chat.");
     }
@@ -43,6 +46,7 @@ io.on("connection", (socket) => {
       maxUsers: parseInt(maxUsers, 10) || 2,
       endTime: Date.now() + duration,
     };
+    console.log(`Room '${roomCode}' created for ${rooms[roomCode].maxUsers} users.`);
   });
 
   socket.on("join-room", (data) => {
@@ -59,6 +63,7 @@ io.on("connection", (socket) => {
     room.users.push(socket.id);
     socket.join(roomCode);
 
+    console.log(`User ${socket.id} joined room '${roomCode}'. Users in room: ${room.users.length}`);
     socket.emit("joined");
     socket.broadcast.to(roomCode).emit("system", "A user has joined the chat.");
   });
@@ -79,6 +84,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
+    console.log(`User ${socket.id} disconnected.`);
     handleUserLeave(socket);
   });
 });
@@ -87,6 +93,7 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`ANONX Server is running on port ${PORT}`);
 });
+
 
 
 
