@@ -5,12 +5,15 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 
-// THE FINAL FIX FOR RENDER'S NETWORK
+// THE FINAL, DEFINITIVE FIX FOR MULTI-USER
 const io = new Server(server, {
   cors: { origin: "*" },
   maxHttpBufferSize: 1e8, // 100 MB
-  // This forces a more stable connection method compatible with free hosting.
-  transports: ["polling"],
+
+  // This is the magic flag. It enables compatibility mode, telling the new
+  // v4 server how to correctly handle connections from the older v2 Android client.
+  // This solves the 'kicking out' bug at the deepest level.
+  allowEIO3: true,
 });
 
 const rooms = {};
@@ -96,6 +99,7 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`ANONX Server is running on port ${PORT}`);
 });
+
 
 
 
