@@ -1,12 +1,3 @@
-
-
-
-
-
-
-
-
-
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -18,16 +9,18 @@ const io = new Server(server, {
   cors: { origin: "*" }
 });
 
-// rooms = {
-//   ROOM123: {
-//     users: [socketId1, socketId2],
-//     maxUsers: 2,
-//     endTime: timestamp
-//   }
-// }
+/*
+rooms = {
+  ROOM123: {
+    users: [socketId1, socketId2],
+    maxUsers: 2,
+    endTime: timestamp
+  }
+}
+*/
 const rooms = {};
 
-// 🔥 CLEAN & SAFE LEAVE HANDLER
+// 🔥 SAFE LEAVE HANDLER (ONLY EXPLICIT LEAVE)
 function handleUserLeave(socket) {
   const roomCode = socket.data.roomCode;
   if (!roomCode || !rooms[roomCode]) return;
@@ -40,7 +33,6 @@ function handleUserLeave(socket) {
 
   socket.broadcast.to(roomCode).emit("system", "A user left the chat");
 
-  // destroy room only if empty
   if (room.users.length === 0) {
     console.log(`Room ${roomCode} destroyed (empty)`);
     delete rooms[roomCode];
@@ -52,9 +44,14 @@ function handleUserLeave(socket) {
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  // CREATE ROOM
+  // ✅ CREATE ROOM (DO NOT OVERWRITE EXISTING ROOM)
   socket.on("create-room", ({ roomCode, maxUsers, duration }) => {
     if (!roomCode) return;
+
+    if (rooms[roomCode]) {
+      console.log(`Room ${roomCode} already exists, skipping create`);
+      return;
+    }
 
     rooms[roomCode] = {
       users: [],
@@ -75,7 +72,6 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // prevent duplicate join
     if (room.users.includes(socket.id)) return;
 
     if (room.users.length >= room.maxUsers) {
@@ -104,17 +100,17 @@ io.on("connection", (socket) => {
     io.to(roomCode).emit("new-message", message);
   });
 
-  // MANUAL LEAVE
+  // ✅ MANUAL LEAVE ONLY
   socket.on("leave-room", () => {
     handleUserLeave(socket);
   });
 
-  // ✅ FIX: DISCONNECT IGNORE
+  // ✅ IGNORE DISCONNECT (VERY IMPORTANT)
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
-    // Network disconnect ≠ user left
+    // disconnect ≠ leave-room
   });
-}); // ✅ THIS WAS MISSING
+});
 
 const PORT = 3000;
 server.listen(PORT, "0.0.0.0", () => {
