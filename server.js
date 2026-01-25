@@ -1,3 +1,12 @@
+
+
+
+
+
+
+
+
+
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -89,7 +98,7 @@ io.on("connection", (socket) => {
     socket.broadcast.to(roomCode).emit("system", "A user joined the chat");
   });
 
-  // SEND MESSAGE (to everyone including sender)
+  // SEND MESSAGE
   socket.on("send-message", ({ roomCode, message }) => {
     if (!roomCode || !message) return;
     io.to(roomCode).emit("new-message", message);
@@ -100,22 +109,14 @@ io.on("connection", (socket) => {
     handleUserLeave(socket);
   });
 
-  // DISCONNECT
+  // ✅ FIX: DISCONNECT IGNORE
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
-    handleUserLeave(socket);
+    // Network disconnect ≠ user left
   });
-});
+}); // ✅ THIS WAS MISSING
 
 const PORT = 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`ANONX server running on port ${PORT}`);
 });
-
-
-
-
-
-
-
-
