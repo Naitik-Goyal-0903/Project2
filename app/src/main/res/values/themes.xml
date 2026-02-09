@@ -1,0 +1,17 @@
+<resources>
+    <style name="Base.Theme.AnonX" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:fitsSystemWindows">true</item>
+    </style>
+
+    <style name="Theme.AnonX" parent="Base.Theme.AnonX" />
+
+    <style name="Theme.AnonX.NoActionBar" parent="Theme.AnonX" />
+
+    <style name="SecurityPill">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">#80FFFFFF</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+</resources>

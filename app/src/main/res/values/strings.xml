@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">AnonX</string>
+    <string name="title_activity_main">ANONX Secure Chat</string>
+    <string name="make_conversation">Make Conversation</string>
+    <string name="join_conversation">Join Conversation</string>
+    <string name="timer_placeholder">--:--</string>
+    <string name="leave">Leave</string>
+    <string name="attach_file">Attach file</string>
+    <string name="type_a_message">Type a message...</string>
+    <string name="send">Send</string>
+</resources>
